@@ -60,18 +60,18 @@ export const edgePreview = (s: string, head = 16, tail = 28) => {
       : `${one.slice(0, head).trimEnd()}.. ${one.slice(-tail).trimStart()}`
 }
 
-export const pasteTokenLabel = (text: string, lineCount: number) => {
+export const pasteTokenLabel = (text: string, lineCount: number, index: number) => {
   const preview = edgePreview(text)
-
+  const identity = ` #${index}`
   if (!preview) {
-    return `[[ [${compactNumber(lineCount)} lines] ]]`
+    return `[[ [${compactNumber(lineCount)} lines]${identity} ]]`
   }
 
   const [head = preview, tail = ''] = preview.split('.. ', 2)
 
   return tail
-    ? `[[ ${head.trimEnd()}.. [${compactNumber(lineCount)} lines] .. ${tail.trimStart()} ]]`
-    : `[[ ${preview} [${compactNumber(lineCount)} lines] ]]`
+    ? `[[ ${head.trimEnd()}.. [${compactNumber(lineCount)} lines] .. ${tail.trimStart()}${identity} ]]`
+    : `[[ ${preview} [${compactNumber(lineCount)} lines]${identity} ]]`
 }
 
 const THINKING_STATUS_RE = new RegExp(`^(?:${VERBS.join('|')})\\.{0,3}$`, 'i')

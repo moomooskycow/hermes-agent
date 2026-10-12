@@ -1,34 +1,35 @@
 import { useStore } from '@nanostores/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
+import type { ComposerToken } from '../app/interfaces.js'
 import { $uiState, getUiState } from '../app/uiStore.js'
 
 export interface QueueItem {
   display: string
+  interpretation: 'composer' | 'literal'
   text: string
+  readonly tokens: readonly Readonly<ComposerToken>[]
 }
 
-export const queueItem = (text: string, display = text): QueueItem => ({ display, text })
+export const queueItem = (
+  text: string,
+  display = text,
+  tokens: readonly ComposerToken[] = [],
+  interpretation: QueueItem['interpretation'] = 'composer'
+): QueueItem => ({ display, interpretation, text, tokens: [...tokens] })
 
 export function prependQueueItem(queue: QueueItem[], item: QueueItem): void {
   queue.unshift(item)
 }
 
-export function takeQueueItem(queue: QueueItem[], index: number, editedDisplay?: string): QueueItem | undefined {
+export function takeQueueItem(queue: QueueItem[], index: number, edited?: QueueItem): QueueItem | undefined {
   if (index < 0 || index >= queue.length) {
     return undefined
   }
 
   const [item] = queue.splice(index, 1)
 
-  if (!item || editedDisplay === undefined) {
-    return item
-  }
-
-  return {
-    display: editedDisplay,
-    text: editedDisplay.includes(item.display) ? editedDisplay.replace(item.display, item.text) : editedDisplay
-  }
+  return edited ?? item
 }
 
 // Mutates `arr` in place; returned reference is the same input array, kept
@@ -48,7 +49,7 @@ interface PendingQueue {
   items: QueueItem[]
 }
 
-export function useQueue() {
+export function useQueue(): UseQueueResult {
   useStore($uiState)
   const queues = useRef(new Map<string, PendingQueue>())
   const unbound = useRef<PendingQueue>({ edit: null, items: [] })
@@ -121,8 +122,8 @@ export function useQueue() {
   )
 
   const enqueue = useCallback(
-    (text: string, display = text) => {
-      queueRef.current.push(queueItem(text, display))
+    (item: QueueItem) => {
+      queueRef.current.push(item)
       syncQueue()
     },
     [queueRef, syncQueue]
@@ -137,15 +138,15 @@ export function useQueue() {
   )
 
   const dequeue = useCallback(() => {
-    const head = queueRef.current.shift()?.text
+    const head = queueRef.current.shift()
     syncQueue()
 
     return head
   }, [queueRef, syncQueue])
 
   const takeQ = useCallback(
-    (i: number, editedDisplay?: string) => {
-      const item = takeQueueItem(queueRef.current, i, editedDisplay)
+    (i: number, edited?: QueueItem) => {
+      const item = takeQueueItem(queueRef.current, i, edited)
 
       if (item) {
         syncQueue()
@@ -175,4 +176,17 @@ export function useQueue() {
     setQueueEdit,
     takeQ
   }
+}
+
+export interface UseQueueResult {
+  dequeue: () => QueueItem | undefined
+  enqueue: (item: QueueItem) => void
+  prependQ: (item: QueueItem) => void
+  queueEditIdx: number | null
+  queueEditRef: { current: number | null }
+  queueRef: { readonly current: QueueItem[] }
+  queuedDisplay: string[]
+  removeQ: (index: number) => void
+  setQueueEdit: (index: number | null) => void
+  takeQ: (index: number, edited?: QueueItem) => QueueItem | undefined
 }

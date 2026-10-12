@@ -205,14 +205,16 @@ Notes:
 
 ### Interaction rules
 
-- Plain text entered while the agent is busy is queued instead of sent immediately.
+- Plain text entered while the agent is busy follows `display.busy_input_mode`: `interrupt` redirects the active turn, `steer` injects at a tool boundary, and `queue` waits for the next turn.
 - Slash commands and `!cmd` do not queue; they execute immediately even while a run is active.
-- Queue auto-drains after each assistant response, unless a queued item is currently being edited.
+- Queue auto-drains when the session becomes idle, unless a queued item is currently being edited.
 - `Up/Down` prioritizes queued-message editing over history. History only activates when there is no queue to edit.
 - Queued drafts keep their original `!cmd` and `{!cmd}` text while you edit them. Shell commands and interpolation run when the queued item is actually sent.
-- If you load a queued item into the input and resubmit plain text, that queue item is replaced, removed from the queue preview, and promoted to send next. If the agent is still busy, the edited item is moved to the front of the queue and sent after the current run completes.
+- Resubmitting an edited queue item removes the old item and uses the current busy-input mode. In `queue` mode it returns to the front of the queue; in `steer` or `interrupt` mode it is offered to the live turn.
+- A confirmed steer refusal safely queues the message. A lost acknowledgement or transport failure reports **UNCONFIRMED** and never automatically resends: inspect the current turn before repeating, and recover the full input from history if needed.
 - Completion requests are debounced by 60 ms. Input starting with `/` uses `complete.slash`. A trailing token that starts with `./`, `../`, `~/`, `/`, or `@` uses `complete.path`.
-- Text pastes are inserted inline directly into the draft. Nothing is newline-flattened.
+- Long or multiline pastes use compact, uniquely numbered `[[ … ]]` previews. Their full bodies survive busy input, queue drains, pre-session input, and queue editing; an active visible preview never loses its payload to a token-count or byte cap.
+- Pasted `!cmd`, slash commands, and `{!cmd}` are data, including syntax visible in a paste preview. Only commands authored outside pasted tokens execute. Nothing is newline-flattened.
 - `Cmd/Ctrl+G` (or `Alt+G` in VSCode/Cursor, which intercept the primary keystroke for Find Next) writes the current draft, including any multiline buffer, to a temp file, suspends Ink, launches `$EDITOR`, then restores the TUI and submits the saved text if the editor exits cleanly.
 - Input history is stored in `~/.hermes/.hermes_history` or under `HERMES_HOME`.
 

@@ -7,6 +7,7 @@ import { DASHBOARD_EXIT_DISABLED_MESSAGE, DASHBOARD_UPDATE_DISABLED_MESSAGE } fr
 import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
 import type * as EnvModule from '../config/env.js'
 import { TUI_SESSION_MODEL_FLAG } from '../domain/slash.js'
+import type { QueueItem } from '../hooks/useQueue.js'
 import * as ClipboardModule from '../lib/clipboard.js'
 import * as Osc52Module from '../lib/osc52.js'
 import * as TerminalSetupModule from '../lib/terminalSetup.js'
@@ -1207,7 +1208,7 @@ const buildComposer = () => ({
   hasSelection: false,
   openEditor: vi.fn(async () => {}),
   paste: vi.fn(),
-  queueRef: { current: [] as string[] },
+  queueRef: { current: [] as QueueItem[] },
   selection: { copySelection: vi.fn(async () => '') },
   setInput: vi.fn()
 })

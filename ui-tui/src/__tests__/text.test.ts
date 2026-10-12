@@ -177,7 +177,7 @@ describe('thinkingPreview over-bound tail', () => {
 })
 describe('pasteTokenLabel', () => {
   it('builds readable long-paste labels with counts', () => {
-    const label = pasteTokenLabel('Vampire Bondage ropes slipped from her neck, still stained with blood', 250)
+    const label = pasteTokenLabel('Vampire Bondage ropes slipped from her neck, still stained with blood', 250, 1)
     expect(label.startsWith('[[ ')).toBe(true)
     expect(label).toContain('[250 lines]')
     expect(label.endsWith(' ]]')).toBe(true)

@@ -1571,6 +1571,10 @@ class CLITuiMixin:
         multimodal follow-ups, or a turn that finished in the race). queue → next turn.
         """
         from cli import CLI_CONFIG, _ACCENT, _DIM, _RST, _cprint, _hermes_home
+        # Live injection bypasses ordinary dispatch, where paste references are
+        # normally expanded. Resolve its body here without changing the queued
+        # placeholder's literal-versus-local-command interpretation.
+        resolved_text = self._expand_paste_references(text)
         _effective_mode = self.busy_input_mode
         redirected = False
         if _effective_mode == "steer":
@@ -1580,7 +1584,7 @@ class CLITuiMixin:
                 accepted = False
                 try:
                     if self.agent is not None and hasattr(self.agent, "steer"):
-                        accepted = bool(self.agent.steer(text))
+                        accepted = bool(self.agent.steer(resolved_text))
                 except Exception as exc:
                     _cprint(f"  {_DIM}Steer failed ({exc}) — queued for next turn.{_RST}")
                     accepted = False
@@ -1600,7 +1604,7 @@ class CLITuiMixin:
                         self.agent is not None
                         and getattr(self.agent, "_supports_active_turn_redirect", False) is True
                         and hasattr(self.agent, "redirect")):
-                        redirected = bool(self.agent.redirect(text))
+                        redirected = bool(self.agent.redirect(resolved_text))
                 except Exception:
                     redirected = False
             if redirected:

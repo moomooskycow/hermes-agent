@@ -4,22 +4,10 @@ import type { ComposerToken } from '../app/interfaces.js'
 import { expandPasteTokens, prepareSlashSubmission, queueItemFromSlash } from '../app/useSubmission.js'
 import { imageToken } from '../domain/attachments.js'
 
-describe('/queue collapsed paste submission', () => {
-  it('keeps the collapsed argument for display and the full multiline payload for execution', () => {
-    const display = '[[ first.. [3 lines] .. last ]]'
-
-    expect(queueItemFromSlash(`/queue ${display}`, '/queue first\nmiddle\nlast')).toEqual({
-      display,
-      text: 'first\nmiddle\nlast'
-    })
-  })
-
-  it('supports the /q alias and rejects an empty queue command', () => {
-    expect(queueItemFromSlash('/q [[ payload ]]', '/q complete payload')).toEqual({
-      display: '[[ payload ]]',
-      text: 'complete payload'
-    })
-    expect(queueItemFromSlash('/queue', '/queue')).toBeUndefined()
+describe('slash paste arguments', () => {
+  it('leaves an empty /queue or /q for command dispatch instead of creating a blank prompt', () => {
+    expect(queueItemFromSlash('/queue', [])).toBeUndefined()
+    expect(queueItemFromSlash('/q', [])).toBeUndefined()
   })
 
   it('expands paste tokens without consuming image tokens', () => {
