@@ -1,15 +1,15 @@
 import { PassThrough } from 'node:stream'
 import { setImmediate as nextTick } from 'node:timers/promises'
 
-import { JsonRpcGatewayError } from '@hermes/shared/json-rpc-channel'
 import { renderSync, Text } from '@hermes/ink'
+import { JsonRpcGatewayError } from '@hermes/shared/json-rpc-channel'
 import React, { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { UseComposerStateResult } from '../app/interfaces.js'
+import { patchUiState, resetUiState } from '../app/uiStore.js'
 import { useComposerState } from '../app/useComposerState.js'
 import { useSubmission, type UseSubmissionResult } from '../app/useSubmission.js'
-import { patchUiState, resetUiState } from '../app/uiStore.js'
 import type { GatewayClient } from '../gatewayClient.js'
 
 // History persistence is unrelated to prompt delivery; never write the operator's

@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { looksLikeSlashCommand } from '@hermes/shared/slash'
 import { useStdin, withInkSuspended } from '@hermes/ink'
+import { looksLikeSlashCommand } from '@hermes/shared/slash'
 import { useStore } from '@nanostores/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
@@ -19,8 +19,8 @@ import { resolveEditor } from '../lib/editor.js'
 import { readOsc52Clipboard } from '../lib/osc52.js'
 import { isRemoteShellSession } from '../lib/terminalSetup.js'
 import { pasteTokenLabel, stripTrailingPasteNewlines } from '../lib/text.js'
-
 import { hasInterpolation } from '../protocol/interpolation.js'
+
 import type {
   ComposerPasteResult,
   ComposerToken,
