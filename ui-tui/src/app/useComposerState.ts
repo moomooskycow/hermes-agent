@@ -156,14 +156,19 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       }
 
       for (const token of gone) {
-        if (token.kind === 'image') {
+        if (
+          token.kind === 'image' &&
+          !queueRef.current.some(item =>
+            item.tokens.some(candidate => candidate.kind === 'image' && candidate.path === token.path)
+          )
+        ) {
           void gw.request('image.detach', { path: token.path, session_id: getUiState().sid }).catch(() => {})
         }
       }
 
       setComposerTokens(prev => prev.filter(token => !gone.includes(token)))
     },
-    [gw, setComposerTokens]
+    [gw, queueRef, setComposerTokens]
   )
 
   /**

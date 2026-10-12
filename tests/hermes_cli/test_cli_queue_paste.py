@@ -91,3 +91,16 @@ def test_busy_paste_is_expanded_before_live_injection(tmp_path, mode, accepted):
         # Preserve the pre-expansion syntax boundary on a refused delivery.
         # Ordinary dispatch expands this only after bang/slash routing.
         assert queue.get_nowait() == display
+
+
+def test_explicit_steer_expands_collapsed_paste_before_live_injection(tmp_path):
+    pasted = "\n".join(f"detail {index}" for index in range(19))
+    paste_file = tmp_path / "paste.txt"
+    paste_file.write_text(pasted, encoding="utf-8")
+    placeholder = f"[Pasted text #1: 19 lines → {paste_file}]"
+    cli_obj = HermesCLI.__new__(HermesCLI)
+    cli_obj._agent_running = True
+    cli_obj.agent = SimpleNamespace(steer=MagicMock(return_value=True))
+    with patch("cli._cprint"):
+        assert cli_obj.process_command(f"/steer {placeholder}") is True
+    cli_obj.agent.steer.assert_called_once_with(pasted)

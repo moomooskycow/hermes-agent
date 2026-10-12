@@ -417,7 +417,7 @@ class CLILoopsMixin:
             _cprint("  Usage: /steer <prompt>")
         elif self._agent_running and self.agent is not None and hasattr(self.agent, "steer"):
             try:
-                accepted = self.agent.steer(payload)
+                accepted = self.agent.steer(self._expand_paste_references(payload))
             except Exception as exc:
                 _cprint(f"  Steer failed: {exc}")
             else:

@@ -1,3 +1,4 @@
+import { JsonRpcGatewayError } from '@hermes/shared/json-rpc-channel'
 import { looksLikeSlashCommand, parseSlashCommand } from '@hermes/shared/slash'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
@@ -224,7 +225,17 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
       const live = getUiState()
       const mode = live.busyInputMode
 
+      if (!live.sid) {
+        return composerActions.enqueue(item)
+      }
+      if (!live.busy) {
+        return sendQueued(item)
+      }
+
       const enqueueText = () => {
+        if (getUiState().sid && !getUiState().busy) {
+          return sendQueued(item)
+        }
         if (opts.fallbackToFront) {
           composerActions.prependQueue(item)
         } else {
@@ -269,7 +280,13 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
               unconfirmed()
             }
           })
-          .catch(unconfirmed)
+          .catch(error => {
+            if (error instanceof JsonRpcGatewayError && [4001, 4002, 4010].includes(error.code ?? 0)) {
+              fallback('steer refused — message queued for next turn')
+            } else {
+              unconfirmed()
+            }
+          })
 
         return
       }
@@ -280,7 +297,7 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
       // and file-drop interpolation exactly once.
       send(item.text, true, item.display, value => value, { tokens: item.tokens })
     },
-    [composerActions, gw, interpolate, send, sys]
+    [composerActions, gw, interpolate, send, sendQueued, sys]
   )
 
   const dispatchQueued = useCallback(
@@ -310,7 +327,7 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
 
       const editIdx = composerRefs.queueEditRef.current
       const editedItem = editIdx === null ? undefined : composerRefs.queueRef.current[editIdx]
-      const submissionTokens = [...(editedItem?.tokens ?? []), ...composerRefs.tokensRef.current]
+      const submissionTokens = composerRefs.tokensRef.current
       const submission = prepareSubmission(full, submissionTokens)
       if (editedItem?.interpretation === 'literal' && full === editedItem.display) {
         submission.interpretation = 'literal'
@@ -324,6 +341,17 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
 
       if (!picked) {
         return
+      }
+      for (const token of editedItem?.tokens ?? []) {
+        if (
+          token.kind === 'image' &&
+          !picked.tokens.some(candidate => candidate.kind === 'image' && candidate.path === token.path) &&
+          !composerRefs.queueRef.current.some(item =>
+            item.tokens.some(candidate => candidate.kind === 'image' && candidate.path === token.path)
+          )
+        ) {
+          void gw.request('image.detach', { path: token.path, session_id: getUiState().sid }).catch(() => {})
+        }
       }
       if (submission.interpretation === 'composer' && looksLikeSlashCommand(syntax)) {
         const slash = prepareSlashSubmission(full, submissionTokens)
@@ -363,6 +391,7 @@ export function useSubmission(opts: UseSubmissionOptions): UseSubmissionResult {
       composerActions,
       composerRefs,
       dispatchQueued,
+      gw,
       sendQueued,
       slashRef,
       sys

@@ -211,7 +211,7 @@ Notes:
 - `Up/Down` prioritizes queued-message editing over history. History only activates when there is no queue to edit.
 - Queued drafts keep their original `!cmd` and `{!cmd}` text while you edit them. Shell commands and interpolation run when the queued item is actually sent.
 - Resubmitting an edited queue item removes the old item and uses the current busy-input mode. In `queue` mode it returns to the front of the queue; in `steer` or `interrupt` mode it is offered to the live turn.
-- A confirmed steer refusal safely queues the message. A lost acknowledgement or transport failure reports **UNCONFIRMED** and never automatically resends: inspect the current turn before repeating, and recover the full input from history if needed.
+- A confirmed steer refusal safely queues the message, including a detached session or an agent that is still starting. If the turn has already settled, it sends normally instead of stranding a queue item. A lost acknowledgement or transport failure reports **UNCONFIRMED** and never automatically resends: inspect the current turn before repeating, and recover the full input from history if needed.
 - Completion requests are debounced by 60 ms. Input starting with `/` uses `complete.slash`. A trailing token that starts with `./`, `../`, `~/`, `/`, or `@` uses `complete.path`.
 - Long or multiline pastes use compact, uniquely numbered `[[ … ]]` previews. Their full bodies survive busy input, queue drains, pre-session input, and queue editing; an active visible preview never loses its payload to a token-count or byte cap.
 - Pasted `!cmd`, slash commands, and `{!cmd}` are data, including syntax visible in a paste preview. Only commands authored outside pasted tokens execute. Nothing is newline-flattened.

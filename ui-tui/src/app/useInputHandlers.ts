@@ -295,6 +295,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
     const item = cRefs.queueRef.current[index]!
     cActions.setQueueEdit(index)
     cActions.setHistoryIdx(null)
+    cActions.syncTokens(item.display)
     cActions.setComposerTokens([...item.tokens])
     cActions.setInput(item.display)
 

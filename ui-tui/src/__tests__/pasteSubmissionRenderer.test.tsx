@@ -1,6 +1,7 @@
 import { PassThrough } from 'node:stream'
 import { setImmediate as nextTick } from 'node:timers/promises'
 
+import { JsonRpcGatewayError } from '@hermes/shared/json-rpc-channel'
 import { renderSync, Text } from '@hermes/ink'
 import React, { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -156,6 +157,68 @@ describe('native composer paste delivery', () => {
 
     await expect.poll(() => app.texts('prompt.submit')).toEqual([note])
     expect(app.bubbles).toEqual([display])
+  })
+
+  it.each([4001, 4002, 4010])('queues a complete paste after definite steer refusal %s', async code => {
+    const app = mountSubmission(method => {
+      if (method === 'session.steer') {
+        throw new JsonRpcGatewayError('steer refused before acceptance', { code })
+      }
+    })
+    patchUiState({ busy: true, busyInputMode: 'steer' })
+    app.submission.submit(await app.paste(note))
+    await expect.poll(() => app.composer.refs.queueRef.current.map(item => item.text)).toEqual([note])
+    patchUiState({ busy: false })
+    app.submission.sendQueued(app.composer.actions.dequeue()!)
+    await expect.poll(() => app.texts('prompt.submit')).toEqual([note])
+    expect(app.sys).not.toHaveBeenCalledWith(expect.stringContaining('UNCONFIRMED'))
+  })
+
+  it('submits resolved busy interpolation if the turn settles before the command returns', async () => {
+    const { promise: commandResult, resolve } = Promise.withResolvers<unknown>()
+    const app = mountSubmission(method => method === 'shell.exec' ? commandResult : undefined)
+    patchUiState({ busy: true, busyInputMode: 'steer' })
+    app.submission.submit(await app.paste(note, 'Typed {!printf RESULT} '))
+    patchUiState({ busy: false })
+    resolve({ code: 0, stderr: '', stdout: 'RESULT' })
+    await expect.poll(() => app.texts('prompt.submit')).toEqual([`Typed RESULT ${note}`])
+    expect(app.texts('session.steer')).toEqual([])
+    expect(app.composer.refs.queueRef.current).toEqual([])
+  })
+
+  it('preserves queue-owned images while editing and detaches deleted images when the edit is accepted', async () => {
+    const app = mountSubmission()
+    patchUiState({ busy: true, busyInputMode: 'queue' })
+    const image = { index: 1, kind: 'image' as const, label: '[[ Image 1 ]]', path: '/queued.png' }
+    const draft = { index: 2, kind: 'image' as const, label: '[[ Image 2 ]]', path: '/draft.png' }
+    app.composer.actions.setComposerTokens([image])
+    app.submission.submit(`Queued ${image.label}`)
+    app.composer.actions.setComposerTokens([draft])
+    app.composer.actions.syncTokens(`Queued ${image.label}`)
+    expect(app.calls.filter(call => call.method === 'image.detach').map(call => call.params.path)).toEqual(['/draft.png'])
+    app.composer.actions.setQueueEdit(0)
+    app.composer.actions.setComposerTokens([image])
+    app.composer.actions.syncTokens('Edited without image')
+    expect(app.calls.filter(call => call.method === 'image.detach').map(call => call.params.path)).toEqual(['/draft.png'])
+    app.submission.submit('Edited without image')
+    expect(app.calls.filter(call => call.method === 'image.detach').map(call => call.params.path)).toEqual(['/draft.png', '/queued.png'])
+    expect(app.composer.refs.queueRef.current[0]!.tokens).toEqual([])
+  })
+
+  it('does not accumulate token copies through repeated queue edits', async () => {
+    const app = mountSubmission()
+    patchUiState({ busy: true, busyInputMode: 'queue' })
+    app.submission.submit(await app.paste(note))
+    for (let cycle = 0; cycle < 8; cycle++) {
+      const item = app.composer.refs.queueRef.current[0]!
+      app.composer.actions.setQueueEdit(0)
+      app.composer.actions.setComposerTokens([...item.tokens])
+      app.submission.submit(item.display)
+    }
+    expect(app.composer.refs.queueRef.current[0]!.tokens).toHaveLength(1)
+    patchUiState({ busy: false })
+    app.submission.sendQueued(app.composer.actions.dequeue()!)
+    await expect.poll(() => app.texts('prompt.submit')).toEqual([note])
   })
 
   it('does not resend a steer consumed before its acknowledgement is lost', async () => {
