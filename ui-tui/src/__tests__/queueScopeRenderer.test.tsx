@@ -5,7 +5,7 @@ import React from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { patchUiState, resetUiState } from '../app/uiStore.js'
-import { useQueue } from '../hooks/useQueue.js'
+import { queueItem, useQueue, type UseQueueResult } from '../hooks/useQueue.js'
 
 const info = (profile_name: string) => ({ model: 'test', profile_name, skills: {}, tools: {} })
 
@@ -17,7 +17,7 @@ describe('pending input destination', () => {
     { profile: 'beta', sid: 'same-session' }
   ])('does not drain or edit another destination: $profile/$sid', async destination => {
     patchUiState({ info: null, sid: null })
-    let queue!: ReturnType<typeof useQueue>
+    let queue!: UseQueueResult
 
     function Harness() {
       queue = useQueue()
@@ -40,24 +40,24 @@ describe('pending input destination', () => {
     })
 
     try {
-      queue.enqueue('startup payload')
+      queue.enqueue(queueItem('startup payload'))
       patchUiState({ info: info('alpha'), sid: 'same-session' })
-      expect(queue.dequeue()).toBe('startup payload')
-      queue.enqueue('private payload', 'private preview')
+      expect(queue.dequeue()).toEqual(queueItem('startup payload'))
+      queue.enqueue(queueItem('private payload', 'private preview'))
       queue.setQueueEdit(0)
       patchUiState({ info: info(destination.profile), sid: destination.sid })
       // Input handlers can run before React commits the navigation render.
       expect(queue.dequeue()).toBeUndefined()
       expect(queue.queueRef.current).toEqual([])
       expect(queue.queueEditRef.current).toBeNull()
-      queue.enqueue('destination payload')
+      queue.enqueue(queueItem('destination payload'))
       await expect.poll(() => queue.queuedDisplay).toEqual(['destination payload'])
       expect(output).not.toContain('private preview|destination payload')
       patchUiState({ info: info('alpha'), sid: 'same-session' })
       expect(queue.queueEditRef.current).toBe(0)
-      expect(queue.takeQ(0)).toEqual({ display: 'private preview', text: 'private payload' })
+      expect(queue.takeQ(0)).toEqual(queueItem('private payload', 'private preview'))
       patchUiState({ info: info(destination.profile), sid: destination.sid })
-      expect(queue.dequeue()).toBe('destination payload')
+      expect(queue.dequeue()).toEqual(queueItem('destination payload'))
       expect(queue.dequeue()).toBeUndefined()
     } finally {
       instance.unmount()

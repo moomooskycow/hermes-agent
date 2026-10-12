@@ -14,6 +14,7 @@ import type {
   SessionUndoResponse,
   SystemBatteryResponse
 } from '../../../gatewayTypes.js'
+import { queueItem } from '../../../hooks/useQueue.js'
 import { writeClipboardText } from '../../../lib/clipboard.js'
 import { writeOsc52Clipboard } from '../../../lib/osc52.js'
 import {
@@ -677,7 +678,7 @@ export const coreCommands: SlashCommand[] = [
         return ctx.transcript.sys(`${ctx.composer.queueRef.current.length} queued message(s)`)
       }
 
-      ctx.composer.enqueue(arg)
+      ctx.composer.enqueue(queueItem(arg))
       ctx.transcript.sys(`queued: "${arg.slice(0, 50)}${arg.length > 50 ? '…' : ''}"`)
     }
   },
@@ -695,7 +696,7 @@ export const coreCommands: SlashCommand[] = [
       // If the agent isn't running, fall back to the queue so the user's
       // message isn't lost — identical semantics to the gateway handler.
       if (!ctx.ui.busy || !ctx.sid) {
-        ctx.composer.enqueue(payload)
+        ctx.composer.enqueue(queueItem(payload, payload, [], 'literal'))
         ctx.transcript.sys(
           `no active turn — queued for next: "${payload.slice(0, 50)}${payload.length > 50 ? '…' : ''}"`
         )

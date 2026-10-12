@@ -835,7 +835,7 @@ export function useMainApp(gw: GatewayClient) {
 
   sysRef.current = sys
 
-  const { dispatchSubmission, send, sendQueued, submit, submitLiteral } = useSubmission({
+  const { dispatchQueued, dispatchSubmission, send, sendQueued, submit, submitLiteral } = useSubmission({
     appendMessage,
     composerActions,
     composerRefs,
@@ -877,6 +877,7 @@ export function useMainApp(gw: GatewayClient) {
       answerClarify,
       appendMessage,
       die,
+      dispatchQueued,
       dispatchSubmission,
       guardBusySessionSwitch: session.guardBusySessionSwitch,
       newSession: session.newSession,

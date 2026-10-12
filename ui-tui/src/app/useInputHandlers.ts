@@ -292,9 +292,12 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
 
     const index = cState.queueEditIdx === null ? (dir > 0 ? 0 : len - 1) : (cState.queueEditIdx + dir + len) % len
 
+    const item = cRefs.queueRef.current[index]!
     cActions.setQueueEdit(index)
     cActions.setHistoryIdx(null)
-    cActions.setInput(cRefs.queueRef.current[index]?.display ?? '')
+    cActions.syncTokens(item.display, item.tokens)
+    cActions.setComposerTokens([...item.tokens])
+    cActions.setInput(item.display)
 
     return true
   }
@@ -759,7 +762,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
 
       if (next) {
         cActions.setQueueEdit(null)
-        actions.dispatchSubmission(next)
+        actions.dispatchQueued(next)
       }
     }
   })

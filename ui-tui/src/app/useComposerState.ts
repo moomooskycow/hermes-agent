@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { useStdin, withInkSuspended } from '@hermes/ink'
+import { looksLikeSlashCommand } from '@hermes/shared/slash'
 import { useStore } from '@nanostores/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
@@ -18,6 +19,7 @@ import { resolveEditor } from '../lib/editor.js'
 import { readOsc52Clipboard } from '../lib/osc52.js'
 import { isRemoteShellSession } from '../lib/terminalSetup.js'
 import { pasteTokenLabel, stripTrailingPasteNewlines } from '../lib/text.js'
+import { hasInterpolation } from '../protocol/interpolation.js'
 
 import type {
   ComposerPasteResult,
@@ -30,27 +32,6 @@ import type {
 import { $isBlocked } from './overlayStore.js'
 import { getUiState } from './uiStore.js'
 
-const TOKEN_MAX_COUNT = 32
-const TOKEN_MAX_TOTAL_BYTES = 4 * 1024 * 1024
-
-const trimTokens = (tokens: ComposerToken[]): ComposerToken[] => {
-  let total = 0
-  const out: ComposerToken[] = []
-
-  for (let i = tokens.length - 1; i >= 0; i--) {
-    const token = tokens[i]!
-    const size = token.text?.length ?? 0
-
-    if (out.length >= TOKEN_MAX_COUNT || total + size > TOKEN_MAX_TOTAL_BYTES) {
-      break
-    }
-
-    total += size
-    out.unshift(token)
-  }
-
-  return out.length === tokens.length ? tokens : out
-}
 
 /** Insert text at the cursor position, adding spacing to separate from adjacent non-whitespace. */
 function insertAtCursor(value: string, cursor: number, text: string): { cursor: number; value: string } {
@@ -107,17 +88,24 @@ export function looksLikeDroppedPath(text: string): boolean {
 
 export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions): UseComposerStateResult {
   const [input, setInputState] = useState('')
-  const [inputBuf, setInputBuf] = useState<string[]>([])
+  const [inputBuf, setInputBufState] = useState<string[]>([])
   const [tokens, setTokens] = useState<ComposerToken[]>([])
   // Tokens and the input line are read from keystroke handlers that run several
   // times before React re-renders, so the refs — not the state — are the source
   // of truth for "what is in the composer right now".
   const inputRef = useRef('')
   const tokensRef = useRef<ComposerToken[]>([])
+  const inputBufRef = useRef<string[]>([])
+  const pasteIndexRef = useRef(0)
 
   const setInput = useCallback<StateSetter<string>>(next => {
     inputRef.current = typeof next === 'function' ? next(inputRef.current) : next
     setInputState(inputRef.current)
+  }, [])
+
+  const setInputBuf = useCallback<StateSetter<string[]>>(next => {
+    inputBufRef.current = typeof next === 'function' ? next(inputBufRef.current) : next
+    setInputBufState(inputBufRef.current)
   }, [])
 
   const setComposerTokens = useCallback<StateSetter<ComposerToken[]>>(next => {
@@ -151,7 +139,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
     setQueueEdit(null)
     setHistoryIdx(null)
     historyDraftRef.current = ''
-  }, [historyDraftRef, setComposerTokens, setHistoryIdx, setInput, setQueueEdit])
+  }, [historyDraftRef, setComposerTokens, setHistoryIdx, setInput, setInputBuf, setQueueEdit])
 
   /**
    * Deleting an `[[ Image N ]]` token IS how you unattach the image — there is
@@ -160,22 +148,34 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
    * what used to make a stale image ride along on the next unrelated turn.
    */
   const syncTokens = useCallback(
-    (value: string) => {
-      const gone = droppedTokens(tokensRef.current, value)
+    (value: string, restoredTokens?: readonly ComposerToken[]) => {
+      const gone = restoredTokens
+        ? tokensRef.current.filter(token => !restoredTokens.some(candidate =>
+          candidate.kind === token.kind &&
+          (token.kind === 'image' && candidate.kind === 'image'
+            ? candidate.path === token.path
+            : candidate.label === token.label)
+        ))
+        : droppedTokens(tokensRef.current, [...inputBufRef.current, value].join('\n'))
 
       if (!gone.length) {
         return
       }
 
       for (const token of gone) {
-        if (token.kind === 'image') {
+        if (
+          token.kind === 'image' &&
+          !queueRef.current.some(item =>
+            item.tokens.some(candidate => candidate.kind === 'image' && candidate.path === token.path)
+          )
+        ) {
           void gw.request('image.detach', { path: token.path, session_id: getUiState().sid }).catch(() => {})
         }
       }
 
       setComposerTokens(prev => prev.filter(token => !gone.includes(token)))
     },
-    [gw, setComposerTokens]
+    [gw, queueRef, setComposerTokens]
   )
 
   /**
@@ -188,7 +188,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       const index = nextImageIndex(tokensRef.current)
       const label = imageToken(index)
 
-      setComposerTokens(prev => trimTokens([...prev, { index, kind: 'image', label, path: attached.path ?? '' }]))
+      setComposerTokens(prev => [...prev, { index, kind: 'image', label, path: attached.path ?? '' }])
 
       const withToken = insertAtCursor(value, cursor, label)
       const remainder = attached.remainder?.trim() ?? ''
@@ -278,17 +278,27 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       const linesHit = pasteCollapseLines > 0 && lineCount >= pasteCollapseLines
       const charsHit = pasteCollapseChars > 0 && cleanedText.length >= pasteCollapseChars
 
-      if (!linesHit && !charsHit) {
+      // Even a short paste must keep executable-looking bytes out of composer
+      // syntax. Only text authored outside the token can dispatch commands.
+      const syntaxHit = cleanedText.trimStart().startsWith('!') || hasInterpolation(cleanedText) || looksLikeSlashCommand(cleanedText)
+
+      if (!linesHit && !charsHit && !syntaxHit) {
         return {
           cursor: cursor + cleanedText.length,
           value: value.slice(0, cursor) + cleanedText + value.slice(cursor)
         }
       }
 
-      const label = pasteTokenLabel(cleanedText, lineCount)
+      let label: string
+
+      do {
+        label = pasteTokenLabel(cleanedText, lineCount, ++pasteIndexRef.current)
+      } while (value.includes(label) || tokensRef.current.some(token => token.label === label))
       const inserted = insertAtCursor(value, cursor, label)
 
-      setComposerTokens(prev => trimTokens([...prev, { kind: 'paste', label, text: cleanedText }]))
+      // Active payloads live as long as their labels. Reconciliation on edits
+      // removes deleted tokens; a count/byte cap must never orphan visible ones.
+      setComposerTokens(prev => [...prev, { kind: 'paste', label, text: cleanedText }])
 
       void gw
         .request<{ path?: string }>('paste.collapse', { text: cleanedText })
@@ -418,7 +428,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
     } finally {
       rmSync(dir, { force: true, recursive: true })
     }
-  }, [input, inputBuf, setInput, submitRef])
+  }, [input, inputBuf, setInput, setInputBuf, submitRef])
 
   const actions = useMemo(
     () => ({
@@ -457,6 +467,7 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
       setHistoryIdx,
       setInput,
       setQueueEdit,
+      setInputBuf,
       takeQ,
       syncTokens
     ]

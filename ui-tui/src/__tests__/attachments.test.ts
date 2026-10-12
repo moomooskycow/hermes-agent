@@ -25,11 +25,12 @@ describe('expandTokens (what the agent actually receives)', () => {
     expect(expandTokens([])(expanded)).toBe(expanded)
   })
 
-  it('expands repeated identical labels in submission order', () => {
-    const label = '[[ x [1 lines] ]]'
-    const expand = expandTokens([paste(label, 'first'), paste(label, 'second')])
+  it('reuses an immutable resolver for repeated label occurrences and later submissions', () => {
+    const label = '[[ x [1 lines] #1 ]]'
+    const expand = expandTokens([paste(label, 'full payload')])
 
-    expect(expand(`${label} then ${label}`)).toBe('first then second')
+    expect(expand(`${label} then ${label}`)).toBe('full payload then full payload')
+    expect(expand(label)).toBe('full payload')
   })
 
   it('leaves an unmatched label intact', () => {

@@ -20,7 +20,7 @@ export const nextImageIndex = (tokens: ComposerToken[]) =>
   tokens.reduce((max, t) => (t.kind === 'image' ? Math.max(max, t.index) : max), 0) + 1
 
 /** Tokens whose label is no longer anywhere in the composer text. */
-export const droppedTokens = (tokens: ComposerToken[], value: string) => {
+export const droppedTokens = (tokens: readonly ComposerToken[], value: string) => {
   const live = new Set(value.match(PASTE_SNIPPET_RE) ?? [])
 
   return tokens.filter(t => !live.has(t.label))
@@ -29,32 +29,37 @@ export const droppedTokens = (tokens: ComposerToken[], value: string) => {
 /**
  * Resolve every token in `value` to what the agent should actually receive.
  *
- * Repeated identical labels expand in submission order (left to right), which
- * is why this walks matches instead of doing a global replace per token.
+ * Labels identify payloads, independent of their order in the draft. Repeated
+ * occurrences of one label repeat that payload without consuming the resolver.
  *
  * An image token expands to nothing: the gateway already holds the file in
  * `session.attached_images` and splices the real vision content in at submit.
  * The token's job was to show the user where it landed, so it also eats one
  * adjacent space to avoid leaving a gap in the middle of a sentence.
  */
-export const expandTokens = (tokens: ComposerToken[]) => {
-  const byLabel = new Map<string, ComposerToken[]>()
+export const expandTokens = (tokens: readonly ComposerToken[]) => {
+  const byLabel = new Map(tokens.map(token => [token.label, token]))
 
-  for (const token of tokens) {
-    const hit = byLabel.get(token.label)
-    hit ? hit.push(token) : byLabel.set(token.label, [token])
-  }
-
+  // Trim authored draft margins before expansion, never the pasted body: its
+  // first-line indentation and trailing spaces are part of the user's data.
   return (value: string) =>
-    value
-      .replace(new RegExp(`[ \\t]?(?:${PASTE_SNIPPET_RE.source})`, 'g'), match => {
-        const token = byLabel.get(match.trimStart())?.shift()
+    value.trim().replace(
+      new RegExp(`([ \\t]?)(${PASTE_SNIPPET_RE.source})([ \\t]?)`, 'g'),
+      (match, lead: string, label: string, tail: string) => {
+        const token = byLabel.get(label)
 
         if (!token) {
           return match
         }
 
-        return token.kind === 'paste' ? match.slice(0, match.length - token.label.length) + token.text : ''
-      })
-      .trim()
+        return token.kind === 'paste' ? lead + token.text + tail : lead && tail ? lead : ''
+      }
+    )
+}
+
+/** Syntax inside a pasted preview is data, just like its hidden full body. */
+export const composerSyntax = (value: string, tokens: readonly ComposerToken[]) => {
+  const labels = new Set(tokens.map(token => token.label))
+
+  return value.replace(PASTE_SNIPPET_RE, label => (labels.has(label) ? ' '.repeat(label.length) : label))
 }
