@@ -97,6 +97,11 @@ _cfg_lock = threading.Lock()
 # compare/check/write transaction needs its own lock, not the unrelated config cache lock.
 _profile_ui_meta_lock = threading.Lock()
 _sessions_lock = threading.RLock()  # reentrant: _close_session_by_id may run under callers that already hold it
+_plugin_message_owner = object()
+_plugin_message_managers: set = set()
+_plugin_messages_stopped = False
+_plugin_message_target: contextvars.ContextVar[tuple[dict, str, str | Path | None] | None] = contextvars.ContextVar(
+    "hermes_tui_plugin_message_target", default=None)
 _cfg_cache: dict | None = None
 _cfg_sig: tuple | None = None
 _cfg_path = None
@@ -345,6 +350,7 @@ def _load_interim_assistant_messages() -> bool:
 
 
 def _shutdown_sessions() -> None:
+    _clear_plugin_message_injectors()
     # Durable-first: flush transcripts (bounded budget) BEFORE the slow teardown so a supervisor SIGKILL can't lose them.
     for step in (_flush_sessions_before_exit, _release_gateway_wake_owner):
         with contextlib.suppress(Exception):
@@ -998,8 +1004,58 @@ def _wire_session_agent(sid: str, key: str, agent) -> bool:
     return notify_registered
 
 
+def _clear_plugin_message_injectors() -> None:
+    global _plugin_messages_stopped
+    with _sessions_lock:
+        _plugin_messages_stopped = True
+        managers = tuple(_plugin_message_managers)
+        _plugin_message_managers.clear()
+    for manager in managers:
+        manager.clear_gateway_message_injector(_plugin_message_owner)
+
+
+def _install_plugin_message_injector(current: dict) -> None:
+    from hermes_cli.plugins import get_plugin_manager
+
+    with _session_profile_runtime_scope(current, hydrate_secrets=False):
+        manager = get_plugin_manager()
+
+    def inject(*, session_key: str, content: str, plugin_id: str) -> bool:
+        with _sessions_lock:
+            if _plugin_messages_stopped:
+                return False
+            matches = [(sid, rec) for sid, rec in _sessions.items()
+                       if Path(rec.get("profile_home") or _hermes_home).resolve() == manager.home_path
+                       and not rec.get("_closing") and not rec.get("_finalized")
+                       and session_key in (rec.get("session_key"), getattr(rec.get("agent"), "session_id", None))]
+            if len(matches) != 1:
+                return False
+            sid, record = matches[0]
+            transport = record.get("transport")
+            if transport is None or getattr(transport, "closed", False):
+                return False
+            target = (record, record["session_key"], record.get("profile_home"))
+        token = _plugin_message_target.set(target)
+        try:
+            with _session_profile_runtime_scope(record):
+                response = dispatch({
+                    "id": f"__plugin__{plugin_id}_{time.time_ns()}",
+                    "method": "prompt.submit",
+                    "params": {"session_id": sid, "text": content},
+                }, transport=transport)
+            return response is None or "error" not in response
+        finally:
+            _plugin_message_target.reset(token)
+
+    with _sessions_lock:
+        if not _plugin_messages_stopped and not manager.has_gateway_message_injector:
+            manager.set_gateway_message_injector(_plugin_message_owner, inject)
+            _plugin_message_managers.add(manager)
+
+
 def _start_session_services(sid: str, key: str, current: dict) -> None:
     """Start the notification poller and fire the session-reset boundary hook."""
+    _install_plugin_message_injector(current)
     with _sessions_lock:
         if (rec := _sessions.get(sid)) is not None:
             rec["_notif_stop"] = _start_notification_poller(sid, rec)
