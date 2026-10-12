@@ -585,6 +585,12 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    expected = _plugin_message_target.get()
+    if expected is not None and (
+            session is not expected[0] or session.get("session_key") != expected[1]
+            or session.get("profile_home") != expected[2]
+            or session.get("_closing") or session.get("_finalized") or _plugin_messages_stopped):
+        return _err(rid, 4001, "plugin target session ended before admission")
     from tools.bot_relay import DeliveryAuthor
 
     # Only the relay handler can build a DeliveryAuthor. A dict here is a client claiming a sender.
