@@ -190,11 +190,11 @@ describe('native composer paste delivery', () => {
     const app = mountSubmission()
     patchUiState({ busy: true, busyInputMode: 'queue' })
     const image = { index: 1, kind: 'image' as const, label: '[[ Image 1 ]]', path: '/queued.png' }
-    const draft = { index: 2, kind: 'image' as const, label: '[[ Image 2 ]]', path: '/draft.png' }
+    const draft = { index: 1, kind: 'image' as const, label: '[[ Image 1 ]]', path: '/draft.png' }
     app.composer.actions.setComposerTokens([image])
     app.submission.submit(`Queued ${image.label}`)
     app.composer.actions.setComposerTokens([draft])
-    app.composer.actions.syncTokens(`Queued ${image.label}`)
+    app.composer.actions.syncTokens(`Queued ${image.label}`, [image])
     expect(app.calls.filter(call => call.method === 'image.detach').map(call => call.params.path)).toEqual(['/draft.png'])
     app.composer.actions.setQueueEdit(0)
     app.composer.actions.setComposerTokens([image])

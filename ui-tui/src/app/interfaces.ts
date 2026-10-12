@@ -406,7 +406,7 @@ export interface ComposerActions {
   setQueueEdit: (index: null | number) => void
   takeQueue: (index: number, edited?: QueueItem) => QueueItem | undefined
   /** Reconcile attached payloads against tokens still present in the text. */
-  syncTokens: (value: string) => void
+  syncTokens: (value: string, restoredTokens?: readonly ComposerToken[]) => void
 }
 
 export interface ComposerRefs {

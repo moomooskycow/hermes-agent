@@ -148,8 +148,15 @@ export function useComposerState({ gw, submitRef, sys }: UseComposerStateOptions
    * what used to make a stale image ride along on the next unrelated turn.
    */
   const syncTokens = useCallback(
-    (value: string) => {
-      const gone = droppedTokens(tokensRef.current, [...inputBufRef.current, value].join('\n'))
+    (value: string, restoredTokens?: readonly ComposerToken[]) => {
+      const gone = restoredTokens
+        ? tokensRef.current.filter(token => !restoredTokens.some(candidate =>
+          candidate.kind === token.kind &&
+          (token.kind === 'image' && candidate.kind === 'image'
+            ? candidate.path === token.path
+            : candidate.label === token.label)
+        ))
+        : droppedTokens(tokensRef.current, [...inputBufRef.current, value].join('\n'))
 
       if (!gone.length) {
         return
